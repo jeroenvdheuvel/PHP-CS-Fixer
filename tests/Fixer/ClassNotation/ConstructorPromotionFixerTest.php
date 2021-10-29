@@ -235,6 +235,29 @@ class Bar {
 }
 PHP,
             ],
+            'class property with docblock' => [
+                <<<'PHP'
+<?php
+class Foo {
+
+    public function __construct(private $bar) {
+    }
+}
+PHP,
+                <<<'PHP'
+<?php
+class Foo {
+    /**
+     * @var bool
+     */
+    private $bar;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+                ]
         ];
     }
 }

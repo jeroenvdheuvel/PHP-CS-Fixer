@@ -241,8 +241,12 @@ class Foo {
 
     private function clearClassProperty(Tokens $tokens, int $from, int $to): void
     {
+        $docToken = $tokens->getPrevNonWhitespace($from);
+        if ($docToken && $tokens[$docToken]->isGivenKind(T_DOC_COMMENT)) {
+            $from = $docToken;
+        }
         if ($tokens[$from - 1]->isWhitespace()) {
-            $from --;
+            $from--;
         }
 
         $tokens->clearRange($from, $to);
