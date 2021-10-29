@@ -112,7 +112,7 @@ class Foo {
 
     public function isCandidate(Tokens $tokens): bool
     {
-        return $tokens->isAllTokenKindsFound([T_CLASS, T_FUNCTION, T_VARIABLE]);
+        return \PHP_VERSION_ID >= 80000 && $tokens->isAllTokenKindsFound([T_CLASS, T_FUNCTION, T_VARIABLE]);
     }
 
     private function extractClassData(): array
@@ -149,6 +149,7 @@ class Foo {
     }
 
     // TODO: Only enable on php 8
+
 
     private function extractFunctionArguments(int $index): array
     {
