@@ -257,7 +257,53 @@ class Foo {
     }
 }
 PHP,
-                ]
+                ],
+            'class properties not in the constructor stay in the correct place' => [
+                <<<'PHP'
+<?php
+class Foo {
+    private $baz;
+
+    public function __construct(private $bar) {
+    }
+}
+PHP,
+                <<<'PHP'
+<?php
+class Foo {
+    private $bar;
+    private $baz;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+            ],
+            'constructor calling parent stays correct' => [
+                <<<'PHP'
+<?php
+class Bar {}
+class Foo extends Bar {
+
+    public function __construct(private $bar) {
+        parent::__construct();
+    }
+}
+PHP,
+                <<<'PHP'
+<?php
+class Bar {}
+class Foo extends Bar {
+    private $bar;
+
+    public function __construct($bar) {
+        parent::__construct();
+        $this->bar = $bar;
+    }
+}
+PHP,
+            ],
         ];
     }
 }
