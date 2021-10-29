@@ -139,7 +139,7 @@ class Foo {
 }
 PHP,
             ],
-            'class with optional typed property' => [
+            'class with nullable typed property' => [
                 <<<'PHP'
 <?php
 class Foo {
@@ -159,12 +159,32 @@ class Foo {
 }
 PHP,
             ],
-            'class with multiple properties' => [
+            'class with nullable typed property and null assignment' => [
                 <<<'PHP'
 <?php
 class Foo {
 
-    public function __construct(private $bar, protected $baz) {
+    public function __construct(private ?bool $bar = null) {
+    }
+}
+PHP,
+                <<<'PHP'
+<?php
+class Foo {
+    private ?bool $bar = null;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+            ],
+            'class with multiple properties and assignments' => [
+                <<<'PHP'
+<?php
+class Foo {
+
+    public function __construct(private $bar, protected $baz = "baz") {
     }
 }
 PHP,
@@ -172,8 +192,7 @@ PHP,
 <?php
 class Foo {
     private $bar;
-
-    protected $baz;
+    protected $baz = "baz";
 
     public function __construct($bar, $baz) {
         $this->bar = $bar;
@@ -212,29 +231,6 @@ class Bar {
 
     public function __construct($baz) {
         $this->baz = $baz;
-    }
-}
-PHP,
-            ],
-            'class property with docblock' => [
-                <<<'PHP'
-<?php
-class Foo {
-
-    public function __construct(private $bar) {
-    }
-}
-PHP,
-                <<<'PHP'
-<?php
-class Foo {
-    /**
-     * @var bool
-     */
-    private $bar;
-
-    public function __construct($bar) {
-        $this->bar = $bar;
     }
 }
 PHP,

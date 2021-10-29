@@ -79,18 +79,14 @@ class Foo {
                 if (!isset($class['properties'][$name])) {
                     continue;
                 }
-                $variableAssignmentSequence = $this->extractVariableAssignmentSequence($tokens, $name, $constructorStart, $constructorEnd);
 
-                if (!$variableAssignmentSequence) {
+                $variableAssignmentSequence = $this->extractVariableAssignmentSequence($tokens, $name, $constructorStart, $constructorEnd);
+                if ($variableAssignmentSequence === null) {
                     continue;
                 }
 
                 $propertyIndex = $class['properties'][$name];
-                $propertyNextMeaningfulTokenIndex = $tokens->getNextMeaningfulToken($propertyIndex);
-                // TODO: `= null` will not work
-                if ($tokens[$propertyNextMeaningfulTokenIndex]->getContent() !== ';') {
-                    continue;
-                }
+                $propertyNextMeaningfulTokenIndex = $tokens->getNextTokenOfKind($propertyIndex, [T_STRING, ";"]);
 
                 $propertyVisibilityIndex = $this->findPropertyVisibilityIndex($tokens, $propertyIndex);
                 $insertTokens = $this->createPropertyPromotionInsertTokens($tokens, $propertyVisibilityIndex, $propertyIndex);
@@ -102,8 +98,8 @@ class Foo {
                 );
 
                 $this->clearClassProperty($tokens, $propertyVisibilityIndex, $propertyNextMeaningfulTokenIndex);
-
-                $tokens->insertAt($index, $insertTokens);
+                $tokens->clearAt($index[$name]);
+                $tokens->insertAt($index[$name], $insertTokens);
             }
         }
 
@@ -115,13 +111,6 @@ class Foo {
         return $tokens->isAllTokenKindsFound([T_CLASS, T_FUNCTION, T_VARIABLE]);
     }
 
-//    /**
-//     * {@inheritdoc}
-//     */
-//    public function isRisky(): bool
-//    {
-//        return true;
-//    }
     private function extractClassData(Tokens $tokens): array
     {
         $tokenAnalyzer= new TokensAnalyzer($tokens);
@@ -144,7 +133,7 @@ class Foo {
 
             $methodIndex = $tokens->getNextMeaningfulToken($index);
             $methodToken = $tokens[$methodIndex];
-            if ($methodToken->getContent() !== '__construct') {
+            if (strtolower($methodToken->getContent()) !== '__construct') {
                 continue;
             }
 
@@ -159,21 +148,14 @@ class Foo {
 
     private function extractFunctionArguments(Tokens $tokens, int $index): array
     {
-        $functionAnalyzer = new FunctionsAnalyzer();
-        $functionArguments = $functionAnalyzer->getFunctionArguments($tokens, $index);
-
-        $extractedArguments = [];
-
-        foreach ($functionArguments as $argument) {
-            $extractedArguments[$argument->getName()] = $argument->getNameIndex();
-        }
-
-        return $extractedArguments;
+        return array_map(static function ($argument) {
+            return [$argument->getName() => $argument->getNameIndex()];
+        }, (new FunctionsAnalyzer())->getFunctionArguments($tokens, $index));
     }
 
     protected function extractVariableAssignmentSequence(Tokens $tokens, string $variableName, int $from, int $to): ?array
     {
-        $variableNameWithoutSigil = substr($variableName, 1);
+        $variableNameWithoutSigil = str_replace("$", "", $variableName);
 
         return $tokens->findSequence(
             [
@@ -191,24 +173,27 @@ class Foo {
 
     private function createPropertyPromotionInsertTokens(Tokens $tokens, int $visibilityIndex, int $propertyIndex): array
     {
-        $insertTokens = [];
-
-        for ($i=$visibilityIndex; $i<$propertyIndex; $i++) {
-            try {
-                $insertTokens[] = $this->convertVisibilityToken($tokens[$i]);
-            } catch (InvalidArgumentException $e) {
-                $insertTokens[] = $tokens[$i];
-            }
+        $propertyHasAttribution = $tokens->getNextMeaningfulToken($propertyIndex);
+        if ($tokens[$propertyHasAttribution]->getContent() === "=") {
+            $propertyIndex = $tokens->getNextMeaningfulToken($propertyHasAttribution);
         }
 
-        return $insertTokens;
+        return array_map(function ($index) use ($tokens) {
+            try {
+                return $this->convertVisibilityToken($tokens[$index]);
+            } catch (InvalidArgumentException $e) {
+                return $tokens[$index];
+            }
+        }, range($visibilityIndex, $propertyIndex));
     }
 
     private function convertVisibilityToken(Token $token): Token
     {
-        $convertedId = $this->convertPropertyVisibilityIdToPromotedPropertyId($token->getId());
+        if ($token->getId()) {
+            $convertedId = $this->convertPropertyVisibilityIdToPromotedPropertyId($token->getId());
+        }
 
-        return new Token([$convertedId, $token->getContent()]);
+        return new Token([$convertedId ?? "", $token->getContent()]);
     }
 
     private function convertPropertyVisibilityIdToPromotedPropertyId(int $id): int
@@ -233,7 +218,7 @@ class Foo {
 
     private function findPropertyVisibilityIndex(Tokens $tokens, int $propertyIndex): int
     {
-        for ($i=$propertyIndex - 1; $i>=$propertyIndex-6; $i--) {
+        for ($i = $propertyIndex - 1; $i >= $propertyIndex - 6; $i--) {
             if ($tokens[$i]->isGivenKind([T_PUBLIC, T_PROTECTED, T_PRIVATE])) {
                 return $i;
             }
