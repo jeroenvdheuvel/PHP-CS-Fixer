@@ -304,6 +304,30 @@ class Foo extends Bar {
 }
 PHP,
             ],
+            'class with attribute assignment with new stays correct' => [
+                <<<'PHP'
+<?php
+class Foo {
+    private $baz;
+
+    public function __construct(private $bar) {
+        $this->baz = new DateTimeImmutable();
+    }
+}
+PHP,
+                <<<'PHP'
+<?php
+class Foo {
+    private $bar;
+    private $baz;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+        $this->baz = new DateTimeImmutable();
+    }
+}
+PHP,
+            ],
         ];
     }
 }

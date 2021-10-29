@@ -34,6 +34,11 @@ use RuntimeException;
 final class ConstructorPromotionFixer extends AbstractFixer
 {
     /**
+     * @var Tokens
+     */
+    private $tokens;
+
+    /**
      * {@inheritdoc}
      */
     public function getDefinition(): FixerDefinitionInterface
@@ -68,42 +73,41 @@ class Foo {
 
     protected function applyFix(\SplFileInfo $file, Tokens $tokens): void
     {
-        // TODO: What about makign `$tokens` a class property instead of passing it along all the time?
-        $classes = $this->extractClassData($tokens);
+        $this->tokens = $tokens;
+        $classes = $this->extractClassData();
 
         foreach (array_reverse($classes) as $class) {
-            $constructorStart = $tokens->getNextTokenOfKind($class['constructor'], ['{']);
-            $constructorEnd = $tokens->findBlockEnd(Tokens::BLOCK_TYPE_CURLY_BRACE, $constructorStart);
+            $constructorStart = $this->tokens->getNextTokenOfKind($class['constructor'], ['{']);
+            $constructorEnd = $this->tokens->findBlockEnd(Tokens::BLOCK_TYPE_CURLY_BRACE, $constructorStart);
 
             foreach (array_reverse($class['constructorArguments']) as $name => $index) {
                 if (!isset($class['properties'][$name])) {
                     continue;
                 }
 
-                $variableAssignmentSequence = $this->extractVariableAssignmentSequence($tokens, $name, $constructorStart, $constructorEnd);
+                $variableAssignmentSequence = $this->extractVariableAssignmentSequence($name, $constructorStart, $constructorEnd);
                 if ($variableAssignmentSequence === null) {
                     continue;
                 }
 
                 $propertyIndex = $class['properties'][$name];
-                $propertyNextMeaningfulTokenIndex = $tokens->getNextTokenOfKind($propertyIndex, [T_STRING, ";"]);
+                $propertyNextMeaningfulTokenIndex = $this->tokens->getNextTokenOfKind($propertyIndex, [T_STRING, ";"]);
 
-                $propertyVisibilityIndex = $this->findPropertyVisibilityIndex($tokens, $propertyIndex);
-                $insertTokens = $this->createPropertyPromotionInsertTokens($tokens, $propertyVisibilityIndex, $propertyIndex);
+                $propertyVisibilityIndex = $this->findPropertyVisibilityIndex($propertyIndex);
+                $insertTokens = $this->createPropertyPromotionInsertTokens($propertyVisibilityIndex, $propertyIndex);
 
                 $this->clearVariableAssignment(
-                    $tokens,
                     array_key_first($variableAssignmentSequence),
                     array_key_last($variableAssignmentSequence)
                 );
 
-                $this->clearClassProperty($tokens, $propertyVisibilityIndex, $propertyNextMeaningfulTokenIndex);
-                $tokens->clearAt($index[$name]);
-                $tokens->insertAt($index[$name], $insertTokens);
+                $this->clearClassProperty($propertyVisibilityIndex, $propertyNextMeaningfulTokenIndex);
+                $this->tokens->clearAt($index[$name]);
+                $this->tokens->insertAt($index[$name], $insertTokens);
             }
         }
 
-        $tokens->clearEmptyTokens();
+        $this->tokens->clearEmptyTokens();
     }
 
     public function isCandidate(Tokens $tokens): bool
@@ -111,9 +115,9 @@ class Foo {
         return $tokens->isAllTokenKindsFound([T_CLASS, T_FUNCTION, T_VARIABLE]);
     }
 
-    private function extractClassData(Tokens $tokens): array
+    private function extractClassData(): array
     {
-        $tokenAnalyzer= new TokensAnalyzer($tokens);
+        $tokenAnalyzer = new TokensAnalyzer($this->tokens);
         $classyElements = $tokenAnalyzer->getClassyElements();
 
         $extractedClasses = [];
@@ -131,14 +135,14 @@ class Foo {
                 continue;
             }
 
-            $methodIndex = $tokens->getNextMeaningfulToken($index);
-            $methodToken = $tokens[$methodIndex];
+            $methodIndex = $this->tokens->getNextMeaningfulToken($index);
+            $methodToken = $this->tokens[$methodIndex];
             if (strtolower($methodToken->getContent()) !== '__construct') {
                 continue;
             }
 
             $extractedClasses[$classIndex]['constructor'] = $methodIndex;
-            $extractedClasses[$classIndex]['constructorArguments'] = $this->extractFunctionArguments($tokens, $methodIndex);
+            $extractedClasses[$classIndex]['constructorArguments'] = $this->extractFunctionArguments($methodIndex);
         }
 
         return $extractedClasses;
@@ -146,18 +150,18 @@ class Foo {
 
     // TODO: Only enable on php 8
 
-    private function extractFunctionArguments(Tokens $tokens, int $index): array
+    private function extractFunctionArguments(int $index): array
     {
         return array_map(static function ($argument) {
             return [$argument->getName() => $argument->getNameIndex()];
-        }, (new FunctionsAnalyzer())->getFunctionArguments($tokens, $index));
+        }, (new FunctionsAnalyzer())->getFunctionArguments($this->tokens, $index));
     }
 
-    protected function extractVariableAssignmentSequence(Tokens $tokens, string $variableName, int $from, int $to): ?array
+    protected function extractVariableAssignmentSequence(string $variableName, int $from, int $to): ?array
     {
         $variableNameWithoutSigil = str_replace("$", "", $variableName);
 
-        return $tokens->findSequence(
+        return $this->tokens->findSequence(
             [
                 [T_VARIABLE, '$this'],
                 [T_OBJECT_OPERATOR],
@@ -171,18 +175,18 @@ class Foo {
         );
     }
 
-    private function createPropertyPromotionInsertTokens(Tokens $tokens, int $visibilityIndex, int $propertyIndex): array
+    private function createPropertyPromotionInsertTokens(int $visibilityIndex, int $propertyIndex): array
     {
-        $propertyHasAttribution = $tokens->getNextMeaningfulToken($propertyIndex);
-        if ($tokens[$propertyHasAttribution]->getContent() === "=") {
-            $propertyIndex = $tokens->getNextMeaningfulToken($propertyHasAttribution);
+        $propertyHasAttribution = $this->tokens->getNextMeaningfulToken($propertyIndex);
+        if ($this->tokens[$propertyHasAttribution]->getContent() === "=") {
+            $propertyIndex = $this->tokens->getNextMeaningfulToken($propertyHasAttribution);
         }
 
-        return array_map(function ($index) use ($tokens) {
+        return array_map(function ($index) {
             try {
-                return $this->convertVisibilityToken($tokens[$index]);
+                return $this->convertVisibilityToken($this->tokens[$index]);
             } catch (InvalidArgumentException $e) {
-                return $tokens[$index];
+                return $this->tokens[$index];
             }
         }, range($visibilityIndex, $propertyIndex));
     }
@@ -216,39 +220,39 @@ class Foo {
         }
     }
 
-    private function findPropertyVisibilityIndex(Tokens $tokens, int $propertyIndex): int
+    private function findPropertyVisibilityIndex(int $propertyIndex): int
     {
         for ($i = $propertyIndex - 1; $i >= $propertyIndex - 6; $i--) {
-            if ($tokens[$i]->isGivenKind([T_PUBLIC, T_PROTECTED, T_PRIVATE])) {
+            if ($this->tokens[$i]->isGivenKind([T_PUBLIC, T_PROTECTED, T_PRIVATE])) {
                 return $i;
             }
         }
 
         throw new RuntimeException(sprintf(
             'No visibility (public, protected, private) found for property "%s"',
-            $tokens[$propertyIndex]->getContent()
+            $this->tokens[$propertyIndex]->getContent()
         ));
     }
 
-    private function clearVariableAssignment(Tokens $tokens, int $from, int $to): void
+    private function clearVariableAssignment(int $from, int $to): void
     {
-        if ($tokens[$from - 1]->isWhitespace()) {
+        if ($this->tokens[$from - 1]->isWhitespace()) {
             $from --;
         }
 
-        $tokens->clearRange($from, $to);
+        $this->tokens->clearRange($from, $to);
     }
 
-    private function clearClassProperty(Tokens $tokens, int $from, int $to): void
+    private function clearClassProperty(int $from, int $to): void
     {
-        $docToken = $tokens->getPrevNonWhitespace($from);
-        if ($docToken && $tokens[$docToken]->isGivenKind(T_DOC_COMMENT)) {
+        $docToken = $this->tokens->getPrevNonWhitespace($from);
+        if ($docToken && $this->tokens[$docToken]->isGivenKind(T_DOC_COMMENT)) {
             $from = $docToken;
         }
-        if ($tokens[$from - 1]->isWhitespace()) {
+        if ($this->tokens[$from - 1]->isWhitespace()) {
             $from--;
         }
 
-        $tokens->clearRange($from, $to);
+        $this->tokens->clearRange($from, $to);
     }
 }
