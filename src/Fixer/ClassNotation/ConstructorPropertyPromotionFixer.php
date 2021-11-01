@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace PhpCsFixer\Fixer\ClassNotation;
 
 use InvalidArgumentException;
+use RuntimeException;
 use PhpCsFixer\AbstractFixer;
 use PhpCsFixer\FixerDefinition\CodeSample;
 use PhpCsFixer\FixerDefinition\FixerDefinition;
@@ -24,7 +25,6 @@ use PhpCsFixer\Tokenizer\CT;
 use PhpCsFixer\Tokenizer\Token;
 use PhpCsFixer\Tokenizer\Tokens;
 use PhpCsFixer\Tokenizer\TokensAnalyzer;
-use RuntimeException;
 
 /**
  * Move class property declaration to the constructor in PHP 8
@@ -94,7 +94,11 @@ class Foo {
                 $propertyIndex = $class['properties'][$name];
                 $propertyNextMeaningfulTokenIndex = $this->tokens->getNextTokenOfKind($propertyIndex, [T_STRING, ";"]);
 
-                $propertyVisibilityIndex = $this->findPropertyVisibilityIndex($propertyIndex);
+                try {
+                    $propertyVisibilityIndex = $this->findPropertyVisibilityIndex($propertyIndex);
+                } catch (RuntimeException $e) {
+                    continue;
+                }
                 $insertTokens = $this->createPropertyPromotionInsertTokens($propertyVisibilityIndex, $propertyIndex);
 
                 $this->clearVariableAssignment(

@@ -28,6 +28,7 @@ final class ConstructorPropertyPromotionFixerTest extends AbstractFixerTestCase
 {
     /**
      * @dataProvider provideFixCases
+     * @requires PHP >=8.0
      */
     public function testFix(string $expected, ?string $input = null): void
     {
@@ -321,6 +322,18 @@ class Foo {
     public function __construct($bar) {
         $this->bar = $bar;
         $this->baz = new DateTimeImmutable();
+    }
+}
+PHP,
+            ],
+            'invalid class without visibility is unchanged' => [
+                <<<'PHP'
+<?php
+class Foo {
+    static $boo;
+
+    public function __construct($boo) {
+        $this->boo = $boo;
     }
 }
 PHP,
