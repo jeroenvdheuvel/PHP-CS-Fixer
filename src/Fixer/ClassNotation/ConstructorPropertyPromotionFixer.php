@@ -27,11 +27,12 @@ use PhpCsFixer\Tokenizer\TokensAnalyzer;
 use RuntimeException;
 
 /**
- * TODO: Explain here
+ * Move class property declaration to the constructor in PHP 8
  *
  * @author Jeroen van den Heuvel <jeroenvdheuvel+github@hotmail.com>
+ * @author Miguel Heitor <miguelheitor@gmail.com>
  */
-final class ConstructorPromotionFixer extends AbstractFixer
+final class ConstructorPropertyPromotionFixer extends AbstractFixer
 {
     /**
      * @var Tokens
@@ -102,8 +103,8 @@ class Foo {
                 );
 
                 $this->clearClassProperty($propertyVisibilityIndex, $propertyNextMeaningfulTokenIndex);
-                $this->tokens->clearAt($index[$name]);
-                $this->tokens->insertAt($index[$name], $insertTokens);
+                $this->tokens->clearAt($index);
+                $this->tokens->insertAt($index, $insertTokens);
             }
         }
 
@@ -148,13 +149,10 @@ class Foo {
         return $extractedClasses;
     }
 
-    // TODO: Only enable on php 8
-
-
     private function extractFunctionArguments(int $index): array
     {
         return array_map(static function ($argument) {
-            return [$argument->getName() => $argument->getNameIndex()];
+            return $argument->getNameIndex();
         }, (new FunctionsAnalyzer())->getFunctionArguments($this->tokens, $index));
     }
 
@@ -210,15 +208,15 @@ class Foo {
                 return CT::T_CONSTRUCTOR_PROPERTY_PROMOTION_PROTECTED;
             case T_PRIVATE:
                 return CT::T_CONSTRUCTOR_PROPERTY_PROMOTION_PRIVATE;
-            default:
-                throw new InvalidArgumentException(
-                    sprintf(
-                        'Unsupported it "%d" given, supported ids are: "%s"',
-                        $id,
-                        implode(', ', [T_PUBLIC, T_PROTECTED, T_PRIVATE])
-                    )
-                );
         }
+
+        throw new InvalidArgumentException(
+            sprintf(
+                'Unsupported it "%d" given, supported ids are: "%s"',
+                $id,
+                implode(', ', [T_PUBLIC, T_PROTECTED, T_PRIVATE])
+            )
+        );
     }
 
     private function findPropertyVisibilityIndex(int $propertyIndex): int

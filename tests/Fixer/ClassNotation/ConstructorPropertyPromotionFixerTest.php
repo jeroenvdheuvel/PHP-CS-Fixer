@@ -18,13 +18,13 @@ use PhpCsFixer\Tests\Test\AbstractFixerTestCase;
 
 /**
  * @author Jeroen van den Heuvel <jeroenvdheuvel+github@hotmail.com>
- * @author Miguel Heitor <...>
+ * @author Miguel Heitor <miguelheitor@gmail.com>
  *
  * @internal
  *
- * @covers \PhpCsFixer\Fixer\ClassNotation\ConstructorPromotionFixer
+ * @covers \PhpCsFixer\Fixer\ClassNotation\ConstructorPropertyPromotionFixer
  */
-final class ConstructorPromotionFixerTest extends AbstractFixerTestCase
+final class ConstructorPropertyPromotionFixerTest extends AbstractFixerTestCase
 {
     /**
      * @dataProvider provideFixCases
@@ -37,9 +37,6 @@ final class ConstructorPromotionFixerTest extends AbstractFixerTestCase
     public function provideFixCases(): array
     {
         return [
-//            'empty' => [
-//                '',
-//            ],
             'class with public property on top' => [
                 <<<'PHP'
 <?php
