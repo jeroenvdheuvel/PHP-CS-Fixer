@@ -131,7 +131,7 @@ PHP,
 class Foo {
     private bool $bar;
 
-    public function __construct($bar) {
+    public function __construct(bool $bar) {
         $this->bar = $bar;
     }
 }
@@ -151,7 +151,7 @@ PHP,
 class Foo {
     private ?bool $bar;
 
-    public function __construct($bar) {
+    public function __construct(?bool $bar) {
         $this->bar = $bar;
     }
 }
@@ -171,7 +171,7 @@ PHP,
 class Foo {
     private ?bool $bar = null;
 
-    public function __construct($bar) {
+    public function __construct(?bool $bar = null) {
         $this->bar = $bar;
     }
 }
@@ -192,7 +192,7 @@ class Foo {
     private $bar;
     protected $baz = "baz";
 
-    public function __construct($bar, $baz) {
+    public function __construct($bar, $baz = "baz") {
         $this->bar = $bar;
         $this->baz = $baz;
     }
@@ -334,6 +334,150 @@ class Foo {
 
     public function __construct($boo) {
         $this->boo = $boo;
+    }
+}
+PHP,
+            ],
+            'variadic properties are not promoted' => [
+                    <<<'PHP'
+<?php
+class Foo
+{
+    private array $bar;
+
+    public function __construct(int ...$bar)
+    {
+        $this->bar = $bar;
+    }
+}
+PHP,
+                ],
+                'class with array typed property with default' => [
+                    <<<'PHP'
+<?php
+class Foo
+{
+
+    public function __construct(private array $bar = [])
+    {
+    }
+}
+PHP,
+                    <<<'PHP'
+<?php
+class Foo
+{
+    private array $bar;
+
+    public function __construct(array $bar = [])
+    {
+        $this->bar = $bar;
+    }
+}
+PHP,
+                ],
+                'class with typed property from global namespace' => [
+                    <<<'PHP'
+<?php
+class Foo
+{
+
+    public function __construct(private \DateTimeImmutable $bar)
+    {
+    }
+}
+PHP,
+                    <<<'PHP'
+<?php
+class Foo
+{
+    private \DateTimeImmutable $bar;
+
+    public function __construct(\DateTimeImmutable $bar)
+    {
+        $this->bar = $bar;
+    }
+}
+PHP,
+                ],
+                'class with typed property from namespace' => [
+                    <<<'PHP'
+<?php
+class Foo
+{
+
+    public function __construct(private \Foo\Bar $bar)
+    {
+    }
+}
+PHP,
+                    <<<'PHP'
+<?php
+class Foo
+{
+    private \Foo\Bar $bar;
+
+    public function __construct(\Foo\Bar $bar)
+    {
+        $this->bar = $bar;
+    }
+}
+PHP,
+                ],
+                'trait with constructor' => [
+                    <<<'PHP'
+<?php
+trait Foo {
+
+    public function __construct(private $bar) {
+    }
+}
+PHP,
+                    <<<'PHP'
+<?php
+trait Foo {
+    private $bar;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+                ],
+            'abstract classes should not promote' => [
+                <<<'PHP'
+<?php
+abstract class Foo {
+    private $bar;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+            ],
+            'var should not promote' => [
+                <<<'PHP'
+<?php
+abstract class Foo {
+    var $bar;
+
+    public function __construct($bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+            ],
+                'class with not matching types does not change' => [
+                    <<<'PHP'
+<?php
+class Foo {
+    private bool $bar;
+    private string $baz;
+
+    public function __construct($bar, int $baz) {
+        $this->bar = $bar;
+        $this->baz = $baz;
     }
 }
 PHP,

@@ -34,10 +34,13 @@ use PhpCsFixer\Tokenizer\TokensAnalyzer;
  */
 final class ConstructorPropertyPromotionFixer extends AbstractFixer
 {
+    const VISIBILITY_KINDS = [T_PUBLIC, T_PROTECTED, T_PRIVATE];
     /**
      * @var Tokens
      */
     private $tokens;
+
+    private const TYPE_KINDS = [T_STRING, CT::T_ARRAY_TYPEHINT, T_NS_SEPARATOR, CT::T_NULLABLE_TYPE];
 
     /**
      * {@inheritdoc}
@@ -86,12 +89,21 @@ class Foo {
                     continue;
                 }
 
+                if ($this->isVariadicParameter($index)) {
+                    continue;
+                }
+
                 $variableAssignmentSequence = $this->extractVariableAssignmentSequence($name, $constructorStart, $constructorEnd);
                 if ($variableAssignmentSequence === null) {
                     continue;
                 }
 
                 $propertyIndex = $class['properties'][$name];
+
+                if (!$this->isTypeEqualToType($index, $propertyIndex)) {
+                    continue;
+                }
+
                 $propertyNextMeaningfulTokenIndex = $this->tokens->getNextTokenOfKind($propertyIndex, [T_STRING, ";"]);
 
                 try {
@@ -99,16 +111,16 @@ class Foo {
                 } catch (RuntimeException $e) {
                     continue;
                 }
-                $insertTokens = $this->createPropertyPromotionInsertTokens($propertyVisibilityIndex, $propertyIndex);
 
-                $this->clearVariableAssignment(
+                $this->clearRangeAndPrecedingWhitespace(
                     array_key_first($variableAssignmentSequence),
                     array_key_last($variableAssignmentSequence)
                 );
 
+                $propertyVisibilityToken = $this->tokens[$propertyVisibilityIndex];
+
                 $this->clearClassProperty($propertyVisibilityIndex, $propertyNextMeaningfulTokenIndex);
-                $this->tokens->clearAt($index);
-                $this->tokens->insertAt($index, $insertTokens);
+                $this->insertPropertyVisibility($index, $propertyVisibilityToken);
             }
         }
 
@@ -117,19 +129,29 @@ class Foo {
 
     public function isCandidate(Tokens $tokens): bool
     {
-        return \PHP_VERSION_ID >= 80000 && $tokens->isAllTokenKindsFound([T_CLASS, T_FUNCTION, T_VARIABLE]);
+        if (!$tokens->isAnyTokenKindsFound([T_CLASS, T_TRAIT])) {
+            return false;
+        }
+
+        return \PHP_VERSION_ID >= 80000 && $tokens->isAllTokenKindsFound([T_FUNCTION, T_VARIABLE]);
     }
 
     private function extractClassData(): array
     {
         $tokenAnalyzer = new TokensAnalyzer($this->tokens);
+
         $classyElements = $tokenAnalyzer->getClassyElements();
+        $abstractClasses = $this->getAbstractClasses();
 
         $extractedClasses = [];
         foreach ($classyElements as $index => $classyElement) {
             $token = $classyElement['token'];
             $type = $classyElement['type'];
             $classIndex = $classyElement['classIndex'];
+
+            if (isset($abstractClasses[$classIndex])) {
+                continue;
+            }
 
             if ($type === 'property') {
                 $extractedClasses[$classIndex]['properties'][$token->getContent()] = $index;
@@ -178,29 +200,15 @@ class Foo {
         );
     }
 
-    private function createPropertyPromotionInsertTokens(int $visibilityIndex, int $propertyIndex): array
-    {
-        $propertyHasAttribution = $this->tokens->getNextMeaningfulToken($propertyIndex);
-        if ($this->tokens[$propertyHasAttribution]->getContent() === "=") {
-            $propertyIndex = $this->tokens->getNextMeaningfulToken($propertyHasAttribution);
-        }
-
-        return array_map(function ($index) {
-            try {
-                return $this->convertVisibilityToken($this->tokens[$index]);
-            } catch (InvalidArgumentException $e) {
-                return $this->tokens[$index];
-            }
-        }, range($visibilityIndex, $propertyIndex));
-    }
-
     private function convertVisibilityToken(Token $token): Token
     {
-        if ($token->getId()) {
-            $convertedId = $this->convertPropertyVisibilityIdToPromotedPropertyId($token->getId());
+        if ($token->getId() === null) {
+            throw new InvalidArgumentException('Token without id cannot be converted');
         }
 
-        return new Token([$convertedId ?? "", $token->getContent()]);
+        $convertedId = $this->convertPropertyVisibilityIdToPromotedPropertyId($token->getId());
+
+        return new Token([$convertedId, $token->getContent()]);
     }
 
     private function convertPropertyVisibilityIdToPromotedPropertyId(int $id): int
@@ -218,16 +226,23 @@ class Foo {
             sprintf(
                 'Unsupported it "%d" given, supported ids are: "%s"',
                 $id,
-                implode(', ', [T_PUBLIC, T_PROTECTED, T_PRIVATE])
+                implode(', ', self::VISIBILITY_KINDS)
             )
         );
     }
 
     private function findPropertyVisibilityIndex(int $propertyIndex): int
     {
-        for ($i = $propertyIndex - 1; $i >= $propertyIndex - 6; $i--) {
-            if ($this->tokens[$i]->isGivenKind([T_PUBLIC, T_PROTECTED, T_PRIVATE])) {
-                return $i;
+        $index = $propertyIndex;
+
+
+        while ($index = $this->tokens->getPrevMeaningfulToken($index)) {
+            if ($this->tokens[$index]->getContent() === ';') {
+                break;
+            }
+
+            if ($this->tokens[$index]->isGivenKind(self::VISIBILITY_KINDS)) {
+                return $index;
             }
         }
 
@@ -237,25 +252,100 @@ class Foo {
         ));
     }
 
-    private function clearVariableAssignment(int $from, int $to): void
+    private function clearRangeAndPrecedingWhitespace(int $indexStart, int $indexEnd): void
     {
-        if ($this->tokens[$from - 1]->isWhitespace()) {
-            $from --;
+        if ($this->tokens[$indexStart - 1]->isWhitespace()) {
+            $indexStart --;
         }
 
-        $this->tokens->clearRange($from, $to);
+        $this->tokens->clearRange($indexStart, $indexEnd);
     }
 
-    private function clearClassProperty(int $from, int $to): void
+    private function clearClassProperty(int $indexStart, int $indexEnd): void
     {
-        $docToken = $this->tokens->getPrevNonWhitespace($from);
+        $docToken = $this->tokens->getPrevNonWhitespace($indexStart);
         if ($docToken && $this->tokens[$docToken]->isGivenKind(T_DOC_COMMENT)) {
-            $from = $docToken;
-        }
-        if ($this->tokens[$from - 1]->isWhitespace()) {
-            $from--;
+            $indexStart = $docToken;
         }
 
-        $this->tokens->clearRange($from, $to);
+        $this->clearRangeAndPrecedingWhitespace($indexStart, $indexEnd);
+    }
+
+    private function isVariadicParameter(int $index): bool
+    {
+        $prevMeaningfulToken = $this->tokens->getPrevMeaningfulToken($index);
+        return $this->tokens[$prevMeaningfulToken]->getContent() === '...';
+    }
+
+    private function insertPropertyVisibility(int $index, Token $token): void
+    {
+        $insertAt = $index;
+        $convertedToken = $this->convertVisibilityToken($token);
+
+        while ($index = $this->tokens->getPrevMeaningfulToken($index)) {
+            if (!$this->tokens[$index]->isGivenKind(self::TYPE_KINDS)) {
+                break;
+            }
+
+            $insertAt = $index;
+        }
+
+        $this->tokens->insertAt($insertAt, [$convertedToken, new Token([T_WHITESPACE, " "])]);
+    }
+
+    private function getAbstractClasses(): array
+    {
+        return array_filter(
+            $this->tokens->findGivenKind(T_CLASS),
+            function (int $index) {
+                $prevMeaningfulToken = $this->tokens->getPrevMeaningfulToken($index);
+
+                return $this->tokens[$prevMeaningfulToken]->isGivenKind([T_ABSTRACT]);
+            },
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+
+    private function isTypeEqualToType(int $indexA, int $indexB)
+    {
+        $typeTokensA = $this->getTypeTokens($indexA);
+        $typeTokensB = $this->getTypeTokens($indexB);
+
+        if (count($typeTokensA) !== count($typeTokensB)) {
+            return false;
+        }
+
+        if (empty($typeTokensA)) {
+            return true;
+        }
+
+        do {
+            $typeTokenA = current($typeTokensA);
+            $typeTokenB = current($typeTokensB);
+
+            if (!$typeTokenA->equals($typeTokenB)) {
+                return false;
+            }
+        } while (next($typeTokensA) && next($typeTokensB));
+
+        return true;
+    }
+
+    /**
+     * @return Token[]
+     */
+    private function getTypeTokens(int $index): array
+    {
+        $tokens = [];
+
+        while ($index = $this->tokens->getPrevMeaningfulToken($index)) {
+            if (!$this->tokens[$index]->isGivenKind(self::TYPE_KINDS)) {
+                break;
+            }
+
+            $tokens[$index] = $this->tokens[$index];
+        }
+
+        return $tokens;
     }
 }
