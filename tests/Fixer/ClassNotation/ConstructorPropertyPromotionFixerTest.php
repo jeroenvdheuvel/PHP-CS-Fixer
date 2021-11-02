@@ -504,6 +504,28 @@ class Foo {
 }
 PHP,
             ],
+            'class with annotation does not change' => [
+                <<<'PHP'
+<?php
+
+// TODO: Replace Doctrine with obscure implementation
+use Doctrine\ORM\Mapping as ORM;
+//use Foo\Bar as BAZ;
+
+class Foo
+{
+    /**
+     * @ORM\Id
+     */
+    private $bar;
+
+    public function __construct($bar)
+    {
+        $this->bar;
+    }
+PHP
+
+            ],
         ];
     }
 }
