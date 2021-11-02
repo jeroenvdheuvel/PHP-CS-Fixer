@@ -81,6 +81,10 @@ class Foo {
         $classes = $this->extractClassData();
 
         foreach (array_reverse($classes) as $class) {
+            if (!isset($class['constructor'])) {
+                continue;
+            }
+
             $constructorStart = $this->tokens->getNextTokenOfKind($class['constructor'], ['{']);
             $constructorEnd = $this->tokens->findBlockEnd(Tokens::BLOCK_TYPE_CURLY_BRACE, $constructorStart);
 

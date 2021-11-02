@@ -482,6 +482,16 @@ class Foo {
 }
 PHP,
             ],
+            'class without constructor does not change' => [ // TODO: This fails in some kind of way
+                <<<'PHP'
+<?php
+class Foo {
+    private bool $bar;
+
+    public function baz(): void {}
+}
+PHP,
+            ]
         ];
     }
 }
