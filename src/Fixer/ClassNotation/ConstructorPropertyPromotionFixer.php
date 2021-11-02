@@ -104,6 +104,10 @@ class Foo {
 
                 $propertyIndex = $class['properties'][$name];
 
+                if ($this->isCallableParameter($index)) {
+                    continue;
+                }
+
                 if (!$this->isTypeEqualToType($index, $propertyIndex)) {
                     continue;
                 }
@@ -351,5 +355,12 @@ class Foo {
         }
 
         return $tokens;
+    }
+
+    private function isCallableParameter(int $index)
+    {
+        $prevMeaningfulToken = $this->tokens->getPrevMeaningfulToken($index);
+
+        return $this->tokens[$prevMeaningfulToken]->isGivenKind(T_CALLABLE);
     }
 }

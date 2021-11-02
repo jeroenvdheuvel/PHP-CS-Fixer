@@ -491,7 +491,19 @@ class Foo {
     public function baz(): void {}
 }
 PHP,
-            ]
+            ],
+            'class with callable argument does not change' => [
+                <<<'PHP'
+<?php
+class Foo {
+    private $bar;
+
+    public function __construct(callable $bar) {
+        $this->bar = $bar;
+    }
+}
+PHP,
+            ],
         ];
     }
 }
